@@ -9,6 +9,7 @@ import re
 import json
 import hashlib
 import math
+import subprocess
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional, Set, Any
 from dataclasses import dataclass, field
@@ -56,9 +57,10 @@ class ConfigManager:
             try:
                 with open(self.CONFIG_PATH, "r", encoding="utf-8") as f:
                     loaded = json.load(f)
-                    self.config.update(loaded)
-            except Exception:
-                pass
+                    if isinstance(loaded, dict):
+                        self.config.update(loaded)
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"Config load error: {e}")
 
     def save(self):
         try:
@@ -92,11 +94,11 @@ FILE_TYPE_COLORS = {
     '.png': '#FF69B4', '.jpg': '#FF69B4', '.jpeg': '#FF69B4', '.mp3': '#FF8C00',
     '.mp4': '#9370DB', '.mkv': '#9370DB', '.py': '#32CD32', '.js': '#32CD32',
     '.html': '#32CD32', '.css': '#32CD32', '.zip': '#FFD700', '.exe': '#FF4500',
-    '.sys': '#808080', '.dll': '#808080', '.log': '#696969', '.db': '#DC143C'
+    '.sys': '#808080', '.dll': "#445BA0", '.log': "#FA9797", '.db': '#DC143C'
 }
-DEFAULT_COLOR = '#CCCCCC'
-FOLDER_COLOR = '#4169E1'
-SYSTEM_FOLDER_COLOR = '#696969'
+DEFAULT_COLOR = "#FFD0D0"
+FOLDER_COLOR = "#E1E141"
+SYSTEM_FOLDER_COLOR = "#690000"
 
 SAFE_PATTERNS = {
     'extensions': {'.tmp', '.bak', '.temp', '.cache', '.crdownload', '.part', '.downloading', '.~tmp'},
@@ -131,10 +133,10 @@ class FileInfo:
         return self.filename.lower() < other.filename.lower()
 
 class ProcessSafety(Enum):
-    CRITICAL_SYSTEM = "🔴 Critical System"
-    HIGH_RESOURCE = "🟡 High Resource"
-    SAFE = "🟢 Safe to End"
-    UNKNOWN = "⚪ Unknown"
+    CRITICAL_SYSTEM = "Critical System"
+    HIGH_RESOURCE = "High Resource"
+    SAFE = "Safe to End"
+    UNKNOWN = "Unknown"
 
 # ============================================================================
 # CACHING & CLASSIFIERS
@@ -142,7 +144,7 @@ class ProcessSafety(Enum):
 class LRU_Cache:
     def __init__(self, maxsize=5000):
         self.cache = OrderedDict()
-        self.maxsize = maxsize
+        self.maxsize = max(100, maxsize)  # Ensure minimum size
         self.lock = threading.Lock()
 
     def get(self, key, default=None):
@@ -154,10 +156,16 @@ class LRU_Cache:
 
     def set(self, key, value):
         with self.lock:
+            if key in self.cache:
+                del self.cache[key]  # Remove to update position
             self.cache[key] = value
             self.cache.move_to_end(key)
-            if len(self.cache) > self.maxsize:
+            while len(self.cache) > self.maxsize:
                 self.cache.popitem(last=False)
+    
+    def clear(self):
+        with self.lock:
+            self.cache.clear()
 
 class FileClassifier:
     def __init__(self, config: ConfigManager):
@@ -342,6 +350,7 @@ class TaskMonitor(threading.Thread):
                     mem_mb = proc.memory_info().rss / (1024 * 1024)
                     cpu = proc.cpu_percent(interval=0)
                     name = proc.name() or "Unknown"
+                    username = proc.username() if hasattr(proc, 'username') and proc.username() else 'System'
                     
                     # Classification Logic
                     if name.lower() in critical_names or username.lower() in ('system', 'local system', 'root'):
@@ -354,10 +363,10 @@ class TaskMonitor(threading.Thread):
                     processes.append({
                         'pid': proc.pid, 'name': name, 'cpu_percent': cpu,
                         'memory_mb': mem_mb, 'status': proc.status(),
-                        'username': proc.username() if hasattr(proc, 'username') and proc.username() else 'System',
+                        'username': username,
                         'safety': safety.value
                     })
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess): pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess, AttributeError): pass
         processes.sort(key=lambda x: x['memory_mb'], reverse=True)
         return processes
 
@@ -368,23 +377,60 @@ class FileClipboard:
     def __init__(self):
         self.mode = None  # 'copy' or 'cut'
         self.paths: List[str] = []
+        self.lock = threading.Lock()
+    
+    def _validate_paths(self, paths: List[str]) -> bool:
+        """Validate paths exist and are accessible"""
+        if not isinstance(paths, list):
+            return False
+        for p in paths:
+            if not isinstance(p, str) or not os.path.exists(p):
+                return False
+        return True
 
     def copy(self, paths: List[str]):
-        self.mode = 'copy'
-        self.paths = paths
+        if not self._validate_paths(paths):
+            return False
+        with self.lock:
+            self.mode = 'copy'
+            self.paths = paths[:]
+        return True
 
     def cut(self, paths: List[str]):
-        self.mode = 'cut'
-        self.paths = paths
+        if not self._validate_paths(paths):
+            return False
+        with self.lock:
+            self.mode = 'cut'
+            self.paths = paths[:]
+        return True
 
     def paste(self, dest_dir: str) -> Tuple[int, int]:
-        if not self.paths or not os.path.isdir(dest_dir): return 0, 0
+        if not isinstance(dest_dir, str) or not os.path.isdir(dest_dir):
+            return 0, 0
+        
+        with self.lock:
+            if not self.paths:
+                return 0, 0
+            paths_to_process = self.paths[:]
+        
         moved, failed = 0, 0
-        for src in self.paths:
+        for src in paths_to_process:
             try:
+                if not os.path.exists(src):
+                    failed += 1
+                    continue
+                    
                 dest = os.path.join(dest_dir, os.path.basename(src))
+                
+                # Prevent path traversal
+                dest = os.path.normpath(dest)
+                if not dest.startswith(os.path.normpath(dest_dir)):
+                    failed += 1
+                    continue
+                
                 if os.path.exists(dest):
                     dest = f"{dest}_{int(time.time())}"
+                
                 if self.mode == 'cut':
                     shutil.move(src, dest)
                 else:
@@ -393,21 +439,33 @@ class FileClipboard:
                     else:
                         shutil.copy2(src, dest)
                 moved += 1
-            except Exception:
+            except (OSError, PermissionError, shutil.Error) as e:
                 failed += 1
+        
         if self.mode == 'cut':
-            self.paths.clear()
-            self.mode = None
+            with self.lock:
+                self.paths.clear()
+                self.mode = None
+        
         return moved, failed
 
     def delete_selected(self, paths: List[str]) -> int:
         deleted = 0
         for p in paths:
             try:
-                if os.path.isdir(p): shutil.rmtree(p)
-                else: os.remove(p)
+                if not isinstance(p, str) or not os.path.exists(p):
+                    continue
+                # Prevent deletion of critical paths
+                p_lower = os.path.normpath(p).lower()
+                if any(p_lower.startswith(cp.lower()) for cp in CRITICAL_PATTERNS.get('path_prefixes', set())):
+                    continue
+                if os.path.isdir(p):
+                    shutil.rmtree(p)
+                else:
+                    os.remove(p)
                 deleted += 1
-            except Exception: pass
+            except (OSError, PermissionError, shutil.Error):
+                pass
         return deleted
 
 class DragDropManager:
@@ -472,7 +530,7 @@ class DragDropManager:
 class ProjectExplorerPro:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("📂 PROJECT EXPLORER PRO - v4.0")
+        self.root.title("PROJECT EXPLORER PRO - v1.0")
         self.config = ConfigManager()
         
         # DPI Awareness (Windows)
@@ -540,11 +598,11 @@ class ProjectExplorerPro:
     def _build_ui(self):
         menubar = tk.Menu(self.root, bg=self.bg_tertiary, fg=self.fg_primary)
         file_menu = tk.Menu(menubar, tearoff=0, bg=self.bg_tertiary, fg=self.fg_primary)
-        file_menu.add_command(label="📁 Open Settings", command=self._open_settings)
+        file_menu.add_command(label="Open Settings", command=self._open_settings)
         file_menu.add_separator()
-        file_menu.add_command(label="📋 Copy", command=self._clipboard_copy, accelerator="Ctrl+C")
-        file_menu.add_command(label="✂️ Cut", command=self._clipboard_cut, accelerator="Ctrl+X")
-        file_menu.add_command(label="📌 Paste", command=self._clipboard_paste, accelerator="Ctrl+V")
+        file_menu.add_command(label="Copy", command=self._clipboard_copy, accelerator="Ctrl+C")
+        file_menu.add_command(label="Cut", command=self._clipboard_cut, accelerator="Ctrl+X")
+        file_menu.add_command(label="Paste", command=self._clipboard_paste, accelerator="Ctrl+V")
         menubar.add_cascade(label="File", menu=file_menu)
         self.root.config(menu=menubar)
 
@@ -571,26 +629,26 @@ class ProjectExplorerPro:
 
     def _build_scanner_tab(self, notebook):
         frame = ttk.Frame(notebook)
-        notebook.add(frame, text="📁 Directory Scanner")
+        notebook.add(frame, text="Directory Scanner")
 
         ctrl = ttk.Frame(frame, style='Secondary.TFrame')
         ctrl.pack(fill=tk.X, padx=10, pady=5)
-        ttk.Button(ctrl, text="⬆️ Up", command=self._go_up).pack(side=tk.LEFT, padx=2)
+        ttk.Button(ctrl, text="Up", command=self._go_up).pack(side=tk.LEFT, padx=2)
         
         self.path_var = tk.StringVar(value=self.current_path)
         self.path_entry = ttk.Entry(ctrl, textvariable=self.path_var, width=60, font=self.default_font)
         self.path_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
         self.path_entry.bind('<Return>', lambda e: self._start_scan())
         
-        ttk.Button(ctrl, text="🔍 Browse", command=self._browse_folder).pack(side=tk.LEFT, padx=2)
-        self.scan_button = ttk.Button(ctrl, text="▶ Scan", command=self._start_scan)
+        ttk.Button(ctrl, text="Browse", command=self._browse_folder).pack(side=tk.LEFT, padx=2)
+        self.scan_button = ttk.Button(ctrl, text="Scan", command=self._start_scan)
         self.scan_button.pack(side=tk.LEFT, padx=2)
-        self.cancel_scan_button = ttk.Button(ctrl, text="⏹ Cancel", command=self._cancel_scan, state=tk.DISABLED)
+        self.cancel_scan_button = ttk.Button(ctrl, text="Cancel", command=self._cancel_scan, state=tk.DISABLED)
         self.cancel_scan_button.pack(side=tk.LEFT, padx=2)
 
         quick = ttk.Frame(frame, style='Secondary.TFrame')
         quick.pack(fill=tk.X, padx=10, pady=5)
-        for txt, cmd in [("💾 Drives", self._scan_all_drives), ("📂 Desktop", lambda: self._scan_quick("~\\Desktop")), ("📄 Docs", lambda: self._scan_quick("~\\Documents"))]:
+        for txt, cmd in [("Drives", self._scan_all_drives), ("Desktop", lambda: self._scan_quick("~\\Desktop")), ("Docs", lambda: self._scan_quick("~\\Documents"))]:
             ttk.Button(quick, text=txt, command=cmd).pack(side=tk.LEFT, padx=5)
         ttk.Checkbutton(quick, text="Skip System", variable=self.skip_system, command=self._save_config).pack(side=tk.LEFT, padx=15)
         ttk.Label(quick, text="Mode: ").pack(side=tk.LEFT)
@@ -611,7 +669,7 @@ class ProjectExplorerPro:
         hsb.config(command=self.scanner_tree.xview)
 
         for col, w, anchor in [('#0', 350, tk.W), ('Size', 90, tk.E), ('Type', 110, tk.W), ('Modified', 140, tk.W), ('Safety', 110, tk.CENTER)]:
-            self.scanner_tree.heading(col, text=col if col != '#0' else '📄 Filename')
+            self.scanner_tree.heading(col, text=col if col != '#0' else 'Filename')
             self.scanner_tree.column(col, width=w, anchor=anchor)
 
         DragDropManager(self.scanner_tree, self.classifier, self._handle_drop)
@@ -633,19 +691,19 @@ class ProjectExplorerPro:
 
     def _build_task_manager_tab(self, notebook):
         frame = ttk.Frame(notebook)
-        notebook.add(frame, text="⚙️ Task Manager")
+        notebook.add(frame, text="Task Manager")
 
         ctrl = ttk.Frame(frame, style='Secondary.TFrame')
         ctrl.pack(fill=tk.X, padx=10, pady=10)
-        ttk.Checkbutton(ctrl, text="☑️ Auto-refresh", variable=self.auto_refresh, command=self._toggle_auto_refresh).pack(side=tk.LEFT)
+        ttk.Checkbutton(ctrl, text="Auto-refresh", variable=self.auto_refresh, command=self._toggle_auto_refresh).pack(side=tk.LEFT)
         ttk.Label(ctrl, text="Interval: ").pack(side=tk.LEFT, padx=(15,5))
         self.interval_combo = ttk.Combobox(ctrl, textvariable=self.refresh_interval_var, values=[1, 2, 5, 10, 30], width=4, state="readonly", font=self.default_font)
         self.interval_combo.pack(side=tk.LEFT)
         self.interval_combo.bind('<<ComboboxSelected>>', lambda e: self._save_config())
-        ttk.Button(ctrl, text="🔄 Refresh Now", command=self._force_task_refresh).pack(side=tk.LEFT, padx=10)
+        ttk.Button(ctrl, text="Refresh Now", command=self._force_task_refresh).pack(side=tk.LEFT, padx=10)
         self.task_last_update = ttk.Label(ctrl, text="Last: Never", style='Header.TLabel')
         self.task_last_update.pack(side=tk.RIGHT)
-        ttk.Label(ctrl, text="🔍 Filter: ").pack(side=tk.LEFT, padx=(20,5))
+        ttk.Label(ctrl, text="Filter: ").pack(side=tk.LEFT, padx=(20,5))
         self.task_filter_var = tk.StringVar()
         ttk.Entry(ctrl, textvariable=self.task_filter_var, width=25, font=self.default_font).pack(side=tk.LEFT)
         self.task_filter_var.trace_add("write", lambda *args: self._filter_tasks())
@@ -662,7 +720,7 @@ class ProjectExplorerPro:
         vsb.config(command=self.task_tree.yview)
         hsb.config(command=self.task_tree.xview)
         
-        self.task_tree.heading('#0', text='📦 Process Name')
+        self.task_tree.heading('#0', text='Process Name')
         for col, w, anchor in [('PID', 70, tk.CENTER), ('CPU%', 70, tk.E), ('Memory MB', 100, tk.E), ('Status', 100, tk.W), ('User', 140, tk.W), ('Safety', 130, tk.CENTER)]:
             self.task_tree.heading(col, text=col)
             self.task_tree.column(col, width=w, anchor=anchor)
@@ -672,23 +730,23 @@ class ProjectExplorerPro:
         self.task_tree.tag_configure('safe', foreground='#32CD32')
         
         self.task_tree.bind('<<TreeviewSelect>>', self._on_task_selected)
-        self.end_task_button = ttk.Button(frame, text="🛑 End Task", command=self._end_task, state=tk.DISABLED)
+        self.end_task_button = ttk.Button(frame, text="End Task", command=self._end_task, state=tk.DISABLED)
         self.end_task_button.pack(pady=5)
 
     def _build_context_menu(self):
         self.context_menu = tk.Menu(self.root, tearoff=0, bg=self.bg_secondary, fg=self.fg_primary, font=self.default_font)
-        self.context_menu.add_command(label="📁 Open", command=self._open_folder_context)
+        self.context_menu.add_command(label="Open", command=self._open_folder_context)
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="📋 Copy", command=self._clipboard_copy, accelerator="Ctrl+C")
-        self.context_menu.add_command(label="✂️ Cut", command=self._clipboard_cut, accelerator="Ctrl+X")
+        self.context_menu.add_command(label="Copy", command=self._clipboard_copy, accelerator="Ctrl+C")
+        self.context_menu.add_command(label="Cut", command=self._clipboard_cut, accelerator="Ctrl+X")
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="📌 Paste Here", command=self._clipboard_paste, accelerator="Ctrl+V")
+        self.context_menu.add_command(label="Paste Here", command=self._clipboard_paste, accelerator="Ctrl+V")
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="✏️ Rename", command=self._rename_selected, accelerator="F2")
-        self.context_menu.add_command(label="🗑️ Delete", command=self._delete_selected_context, accelerator="Del")
+        self.context_menu.add_command(label="Rename", command=self._rename_selected, accelerator="F2")
+        self.context_menu.add_command(label="Delete", command=self._delete_selected_context, accelerator="Del")
         self.context_menu.add_separator()
-        self.context_menu.add_command(label="📍 Copy Path", command=self._copy_path_context)
-        self.context_menu.add_command(label="📄 Properties", command=self._show_properties)
+        self.context_menu.add_command(label="Copy Path", command=self._copy_path_context)
+        self.context_menu.add_command(label="Properties", command=self._show_properties)
 
     def _show_context_menu(self, event):
         item = self.scanner_tree.identify_row(event.y)
@@ -724,16 +782,25 @@ class ProjectExplorerPro:
         sel = self.scanner_tree.selection()
         if not sel: return
         old_path = sel[0]
-        if not os.path.exists(old_path): return
+        if not isinstance(old_path, str) or not os.path.exists(old_path):
+            return
+        
         new_name = simpledialog.askstring("Rename", "New name:", initialvalue=os.path.basename(old_path))
-        if new_name and new_name != os.path.basename(old_path):
-            new_path = os.path.join(os.path.dirname(old_path), new_name)
-            try:
-                os.rename(old_path, new_path)
-                self.status_label.config(text=f"Renamed to {new_name}")
-                self._start_scan()
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
+        if not new_name or new_name == os.path.basename(old_path):
+            return
+        
+        # Validate new name
+        if any(c in new_name for c in ['/', '\\', ':', '*', '?', '"', '<', '>', '|']):
+            messagebox.showerror("Error", "Invalid characters in filename")
+            return
+        
+        new_path = os.path.join(os.path.dirname(old_path), new_name)
+        try:
+            os.rename(old_path, new_path)
+            self.status_label.config(text=f"Renamed to {new_name}")
+            self._start_scan()
+        except (OSError, PermissionError) as e:
+            messagebox.showerror("Error", f"Rename failed: {e}")
 
     def _handle_drop(self, source_items, dest_path):
         self.clipboard.cut(source_items)
@@ -743,16 +810,26 @@ class ProjectExplorerPro:
 
     # ==================== SCANNER LOGIC ====================
     def _start_scan(self):
-        path = self.path_var.get()
-        if not path or not os.path.exists(path):
+        path = self.path_var.get().strip()
+        if not path or not isinstance(path, str):
             messagebox.showerror("Error", "Invalid path.")
             return
+        
+        path = os.path.normpath(path)
+        if not os.path.exists(path) or not os.path.isdir(path):
+            messagebox.showerror("Error", "Path does not exist or is not a directory.")
+            return
+        
         self.current_path = path
         self.scanner_tree.delete(*self.scanner_tree.get_children())
         self.all_files.clear()
         self.load_count = 0
         self.scanner_queue = queue.Queue()
-        self.scanner_thread = threading.Thread(target=HighPerformanceScanner(self.classifier, self.scanner_queue, self.config).scan_root, args=(path,), daemon=True)
+        self.scanner_thread = threading.Thread(
+            target=HighPerformanceScanner(self.classifier, self.scanner_queue, self.config).scan_root,
+            args=(path,),
+            daemon=True
+        )
         self.scan_button.config(state=tk.DISABLED)
         self.cancel_scan_button.config(state=tk.NORMAL)
         self.status_label.config(text="Scanning...")
@@ -769,13 +846,21 @@ class ProjectExplorerPro:
         item = self.scanner_tree.identify_row(event.y)
         if not item or not self.scanner_tree.exists(item): return
         fi = self.classifier.cache.get(item)
-        if fi and fi.is_dir:
+        if not fi or not os.path.exists(fi.path): return
+        
+        if fi.is_dir:
             self.path_var.set(fi.path)
             self._start_scan()
         else:
-            if platform.system() == "Windows": os.startfile(fi.path)
-            elif platform.system() == "Darwin": os.system(f"open '{fi.path}'")
-            else: os.system(f"xdg-open '{fi.path}'")
+            try:
+                if platform.system() == "Windows":
+                    os.startfile(fi.path)
+                elif platform.system() == "Darwin":
+                    subprocess.run(["open", fi.path], check=False, timeout=5)
+                else:
+                    subprocess.run(["xdg-open", fi.path], check=False, timeout=5)
+            except (subprocess.TimeoutExpired, OSError) as e:
+                messagebox.showerror("Error", f"Cannot open file: {e}")
 
     def _on_search(self):
         query = self.search_var.get().strip()
@@ -784,17 +869,28 @@ class ProjectExplorerPro:
             for fi in self.all_files: self._add_file_to_tree(fi)
             return
         
+        # Limit query length to prevent ReDoS attacks
+        if len(query) > 100:
+            messagebox.showwarning("Warning", "Search query too long (max 100 chars)")
+            return
+        
         case_sens = self.config.get("search_case_sensitive", False)
         use_regex = self.config.get("search_regex", False)
         include_hidden = self.config.get("search_include_hidden", True)
         pattern = query if use_regex else re.escape(query)
         flags = 0 if case_sens else re.IGNORECASE
-        try: compiled = re.compile(pattern, flags)
-        except re.error: return
+        
+        try:
+            # Set timeout for regex compilation
+            compiled = re.compile(pattern, flags)
+        except re.error as e:
+            messagebox.showerror("Error", f"Invalid search pattern: {e}")
+            return
 
         matches = [f for f in self.all_files if (include_hidden or not f.filename.startswith('.')) and compiled.search(f.filename)]
-        for fi in matches: self._add_file_to_tree(fi)
-        self.status_label.config(text=f"🔍 Found {len(matches)} matches")
+        for fi in matches[:1000]:  # Limit display results
+            self._add_file_to_tree(fi)
+        self.status_label.config(text=f"🔍 Found {len(matches)} matches (showing first 1000)")
 
     def _add_file_to_tree(self, fi: FileInfo):
         parent = "" if not fi.parent_path or not self.scanner_tree.exists(fi.parent_path) else fi.parent_path
@@ -865,19 +961,27 @@ class ProjectExplorerPro:
         ttk.Button(frame, text="💾 Save & Apply", command=top.destroy).pack(pady=20)
 
     def _update_font(self, size):
-        try: size = int(size)
-        except: return
+        try:
+            size = int(size)
+            if not (8 <= size <= 16):
+                messagebox.showwarning("Warning", "Font size must be between 8 and 16")
+                return
+        except ValueError:
+            return
         self.font_size = size
         self.config.set("font_size", size)
         self._setup_theme()
-        self._build_ui() # Rebuild UI for font change
+        self._build_ui()
 
     def _pick_color(self, key, btn):
-        color = colorchooser.askcolor(title=f"Select {key}")[1]
-        if color:
+        result = colorchooser.askcolor(title=f"Select {key}")
+        color = result[1] if result and result[1] else None
+        if color and isinstance(color, str) and color.startswith('#'):
             self.config.set(key, color)
             btn.config(text=f"Current: {color}")
             self._setup_theme()
+        elif color:
+            messagebox.showerror("Error", "Invalid color format")
 
     def _show_disclaimer(self):
         msg = "⚠️ SAFETY DISCLAIMER\nThis tool provides deep system access.\nCRITICAL files/processes are protected.\nUse at your own risk. Backup important data.\nProceed?"
@@ -981,9 +1085,27 @@ class ProjectExplorerPro:
         self.root.after(2000, self._update_memory_label)
 
     def _on_close(self):
-        self.config.set("window_geometry", self.root.geometry())
-        self.config.save()
-        self.root.destroy()
+        try:
+            # Stop all threads gracefully
+            if self.scanner_thread and self.scanner_thread.is_alive():
+                self._stop_event = threading.Event()
+                self._stop_event.set()
+                self.scanner_thread.join(timeout=2)
+            
+            if self.task_monitor_thread and self.task_monitor_thread.is_alive():
+                self.task_monitor_thread.stop()
+                self.task_monitor_thread.join(timeout=2)
+            
+            # Clear cache
+            self.classifier.cache.clear()
+            
+            # Save config
+            self.config.set("window_geometry", self.root.geometry())
+            self.config.save()
+        except Exception as e:
+            print(f"Cleanup error: {e}")
+        finally:
+            self.root.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()

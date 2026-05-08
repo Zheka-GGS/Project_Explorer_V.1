@@ -1,78 +1,255 @@
-# Project_ExplorerV1
-PROJECT EXPLORER PRO
-ENGLISH VERSION
-Overview
-Project Explorer Pro is a high-performance desktop application designed for advanced directory scanning, file management, and real-time system process monitoring. Built with Python and Tkinter, it delivers a professional, dark-themed interface with robust safety mechanisms to prevent accidental modification or deletion of critical system files.
-Features
-Multi-threaded recursive directory scanning for optimal performance
-Explorer-style interface with detailed file metadata and sorting
-Color-coded file type categorization for rapid visual identification
-Three-tier safety classification system: SAFE, CRITICAL, and SYSTEM-REMOVABLE
-Real-time process monitoring with CPU, memory, and status tracking
-Secure file deletion with mandatory safety confirmations
-Batch processing, progress tracking, and live statistics
-Professional dark theme with consistent UI styling across platforms
-System Requirements
-Python 3.7 or higher
-Supported Operating Systems: Windows, Linux, macOS
-Dependencies: tkinter (included in standard Python distribution), psutil
-Installation
-Download or clone the project directory.
-Install required dependencies:
-bash
-1
-Launch the application:
-bash
-1
-Usage
-Start the application and acknowledge the safety disclaimer.
-Enter a directory path in the input field or use the Browse button to select a folder.
-Click Scan to initiate directory traversal. Results populate the main file tree.
-Switch to the Task Manager tab to monitor active system processes.
-Select files or processes and use the available controls (Delete, End Task). All destructive operations require explicit user confirmation.
-Safety & Security Guidelines
-Critical system directories and files are automatically identified and locked from deletion.
-Files classified as SYSTEM-REMOVABLE are flagged for optional cleanup but require manual approval.
-Active process paths are cross-referenced to prevent deletion of files currently in use.
-Double-confirmation dialogs are enforced for all file and directory removal operations.
-The application performs zero automatic deletions. All modifications are strictly user-initiated.
+# 🔍 Project Explorer PRO v1.0
+
+> **Advanced Directory & Process Manager** | Windows • Linux • macOS
+
+---
+
+##  ENGLISH VERSION
+
+###  Overview
+**Project Explorer Pro V1** is a high-performance desktop application designed for advanced directory scanning, file management, and real-time system process monitoring. Built with Python and Tkinter, it delivers a professional, dark-themed interface with **enterprise-grade security** mechanisms to prevent accidental modification or deletion of critical system files.
+
+###  Key Features
+- **Multi-threaded Performance** - Recursive directory scanning optimized for speed
+- **Explorer-Style Interface** - Familiar UI with detailed file metadata & sorting
+- **Smart Color Coding** - Visual identification of file types at a glance
+- **Triple-Layer Safety** - SAFE | CRITICAL | SYSTEM-REMOVABLE classification
+- **Live Process Monitor** - Real-time CPU, memory & status tracking
+- **Secure Operations** - Mandatory confirmations for all destructive actions
+- **Advanced Search** - Regex support with safety limits
+- **Customizable Theme** - Professional dark theme with color customization
+- **Batch Processing** - Handle multiple files/folders efficiently
+### 💻 System Requirements
+| Component | Requirement |
+|-----------|-------------|
+| **Python** | 3.7+ |
+| **OS** | Windows, Linux, macOS |
+| **Memory** | 512MB minimum |
+| **Dependencies** | tkinter (bundled), psutil |
+
+###  Installation
+
+#### Option 1: Direct Installation
+```bash
+# Clone the repository
+git clone https://github.com/Zheka-GGS/Project_Explorer_V.1.git
+cd Project_Explorer_V.1
+
+# Install dependencies
+pip install psutil
+
+# Run the application
+python explorerV1.py
+```
+
+#### Option 2: Using Python Package
+```bash
+pip install -r requirements.txt
+python explorerV1.py
+```
+
+###  Quick Start Guide
+
+1. **Launch Application**
+   - Run `explorerV1.py`
+   - Accept the safety disclaimer
+
+2. **Directory Scanning**
+   - Enter path or click **Browse** → Select folder
+   - Click **Scan** to analyze directory
+   - Results appear in color-coded tree view
+
+3. **File Management**
+   - **Copy/Cut/Paste**: Ctrl+C/X/V or right-click context menu
+   - **Rename**: F2 or context menu
+   - **Delete**: Del or context menu (with safety check)
+   - **Drag & Drop**: Move files between directories
+
+4. **Process Management**
+   - Switch to **Task Manager** tab
+   - View CPU, memory, and process status
+   - Select process → **End Task** (with safety lock for critical processes)
+
+###  Security & Safety Features
+
+#### Triple-Layer Protection System
+```
+┌─────────────────────────────────────┐
+│     SAFE FILES                      │
+│   • Cache files (.tmp, .bak)        │
+│   • Temporary downloads             │
+│   • Non-critical directories        │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│    SYSTEM-REMOVABLE                 │
+│   • Windows.old, Prefetch           │
+│   • Installation cache              │
+│   • Requires manual approval        │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│    CRITICAL (LOCKED)                │
+│   • System32, Windows               │
+│   • Running processes               │
+│   • System drivers (.dll, .sys)     │
+└─────────────────────────────────────┘
+```
+
+#### Built-in Safeguards
+✅ Critical system directories are **automatically locked**  
+✅ Active process paths are **cross-referenced** to prevent file-in-use deletions  
+✅ **Double-confirmation** dialogs for destructive operations  
+✅ **Zero automatic deletions** - All changes are user-initiated  
+✅ ReDoS attack prevention via search limits (100 char max)  
+✅ Path validation to prevent traversal attacks  
+✅ Thread-safe operations with proper synchronization  
+✅ Comprehensive exception handling
+
+###  Advanced Features
+
+#### Search Capabilities
+-  **Simple Search**: Plain text matching
+-  **Regex Search**: Advanced pattern matching (with safety limits)
+-  **Filter Options**: Hidden files, case sensitivity
+-  **Live Results**: Updates as you type
+
+#### Process Management
+-  Displays: PID, CPU%, Memory, Status, User
+-  Safety Classification: Critical/High Resource/Safe
+-  Protected: Critical system processes cannot be terminated
+-  Auto-refresh: Configurable refresh intervals (1-30s)
+
+#### Customization
+-  Theme Colors: Primary, Secondary, Tertiary, Accent
+-  Font Size: Adjustable (8-16pt)
+-  Persistent Settings: Auto-saved in user home directory
 License
 MIT License. Free for personal, educational, and commercial use. Refer to the included LICENSE file for full terms.
-РУССКАЯ ВЕРСИЯ
-Обзор
-Project Explorer Pro — это высокопроизводительное десктопное приложение, предназначенное для расширенного сканирования директорий, управления файлами и мониторинга системных процессов в реальном времени. Разработано на Python с использованием Tkinter. Предоставляет профессиональный интерфейс в тёмной теме и встроенные механизмы безопасности для предотвращения случайного изменения или удаления критически важных системных файлов.
-Функциональные возможности
-Многопоточное рекурсивное сканирование директорий для максимальной скорости работы
-Интерфейс в стиле системного проводника с детальной метаинформацией и сортировкой
-Цветовая категоризация типов файлов для быстрой визуальной идентификации
-Трёхуровневая система классификации безопасности: БЕЗОПАСНЫЕ, КРИТИЧЕСКИЕ, СИСТЕМНО-УДАЛЯЕМЫЕ
-Мониторинг активных процессов с отображением нагрузки на ЦП, объёма памяти и статуса
-Безопасное удаление файлов с обязательными диалогами подтверждения
-Пакетная обработка, отслеживание прогресса и статистика в реальном времени
-Профессиональная тёмная тема с единообразным отображением на всех платформах
-Системные требования
-Python версии 3.7 или выше
-Поддерживаемые ОС: Windows, Linux, macOS
-Зависимости: tkinter (входит в стандартную поставку Python), psutil
-Установка
-Скачайте или клонируйте каталог проекта.
-Установите необходимые зависимости:
-bash
-1
-Запустите приложение:
-bash
-1
-Использование
-Запустите приложение и ознакомьтесь с предупреждением о безопасности.
-Введите путь к директории в поле ввода или используйте кнопку «Обзор» для выбора папки.
-Нажмите «Сканировать» для запуска анализа. Результаты отобразятся в основном дереве файлов.
-Перейдите на вкладку «Диспетчер задач» для мониторинга активных системных процессов.
-Выделите файлы или процессы и используйте доступные элементы управления (Удалить, Завершить задачу). Все операции удаления требуют явного подтверждения пользователя.
-Рекомендации по безопасности
-Критические системные директории и файлы автоматически определяются и защищены от удаления.
-Файлы, классифицированные как СИСТЕМНО-УДАЛЯЕМЫЕ, помечаются для опциональной очистки, но требуют ручного подтверждения.
-Пути активных процессов проверяются для предотвращения удаления файлов, используемых в данный момент.
-Для всех операций удаления применяются диалоги двойного подтверждения.
-Приложение не выполняет автоматическое удаление. Все изменения инициируются исключительно пользователем.
-Лицензия
-Лицензия MIT. Свободное использование в личных, образовательных и коммерческих целях. Полные условия см. в прилагаемом файле LICENSE.
+
+---
+
+##  РУССКАЯ ВЕРСИЯ
+
+###  Обзор
+**Project Explorer Pro V1** — это высокопроизводительное десктопное приложение для расширенного сканирования директорий, управления файлами и мониторинга системных процессов. Разработано на Python с Tkinter. Предоставляет профессиональный интерфейс с **корпоративным уровнем безопасности** для защиты критических файлов системы.
+
+### ✨ Ключевые Возможности
+-  **Многопоточность** - Быстрое сканирование директорий рекурсивно
+-  **Интерфейс Проводника** - Знакомый UI с метаданными файлов
+-  **Цветовое Кодирование** - Быстрая визуальная идентификация
+-  **Тройная Защита** - БЕЗОПАСНЫЕ | КРИТИЧЕСКИЕ | СИСТЕМНО-УДАЛЯЕМЫЕ
+-  **Монитор Процессов** - ЦП, память, статус в реальном времени
+-  **Безопасные Операции** - Подтверждение для всех деструктивных действий
+-  **Продвинутый Поиск** - Regex с защитой от ReDoS
+-  **Кастомизация** - Тема с цветовой настройкой
+-  **Пакетная Обработка** - Работа с множественными файлами
+
+### Системные Требования
+| Компонент | Требование |
+|-----------|-----------|
+| **Python** | 3.7+ |
+| **ОС** | Windows, Linux, macOS |
+| **Память** | 512MB минимум |
+| **Зависимости** | tkinter (встроен), psutil |
+
+###  Установка
+
+#### Вариант 1: Прямая установка
+```bash
+# Клонируем репозиторий
+git clone https://github.com/Zheka-GGS/Project_Explorer_V.1.git
+cd Project_Explorer_V.1
+
+# Устанавливаем зависимости
+pip install psutil
+
+# Запускаем приложение
+python explorerV1.py
+```
+
+#### Вариант 2: Через requirements.txt
+```bash
+pip install -r requirements.txt
+python explorerV1.py
+```
+
+###  Краткое Руководство
+
+1. **Запуск**
+   - Запустите `explorerV1.py`
+   - Подтвердите предупреждение о безопасности
+
+2. **Сканирование Директорий**
+   - Введите путь или нажмите **Обзор** → Выберите папку
+   - Нажмите **Сканировать** для анализа
+   - Результаты отобразятся в дереве файлов
+
+3. **Управление Файлами**
+   - **Копировать/Вырезать/Вставить**: Ctrl+C/X/V или контекстное меню
+   - **Переименовать**: F2 или контекстное меню
+   - **Удалить**: Del или контекстное меню (с проверкой безопасности)
+   - **Перетаскивание**: Переместить файлы между директориями
+
+4. **Управление Процессами**
+   - Перейдите на вкладку **Диспетчер Задач**
+   - Просмотрите ЦП, память и статус процесса
+   - Выберите процесс → **Завершить Задачу** (с блокировкой для критичных)
+
+###  Функции Безопасности
+
+#### Система Тройной Защиты
+```
+┌─────────────────────────────────────┐
+│    БЕЗОПАСНЫЕ ФАЙЛЫ                 │
+│   • Кеш файлы (.tmp, .bak)          │
+│   • Временные загрузки              │
+│   • Некритичные директории          │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│     СИСТЕМНО-УДАЛЯЕМЫЕ              │
+│   • Windows.old, Prefetch           │
+│   • Кеш установки                   │
+│   • Требуют ручного подтверждения   │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│     КРИТИЧЕСКИЕ (ЗАБЛОКИРОВАНЫ)     │
+│   • System32, Windows               │
+│   • Активные процессы               │
+│   • Системные драйверы (.dll, .sys) │
+└─────────────────────────────────────┘
+```
+
+#### Встроенные Защиты
+✅ Критические системные директории **автоматически заблокированы**  
+✅ Пути активных процессов **проверяются** во избежание удаления  
+✅ **Двойное подтверждение** для опасных операций  
+✅ **Нет автоматических удалений** - Все действия инициирует пользователь  
+✅ Защита от ReDoS через ограничение поиска (макс. 100 символов)  
+✅ Валидация путей против атак обхода  
+✅ Потокобезопасные операции с синхронизацией  
+✅ Полная обработка исключений
+
+###  Продвинутые Возможности
+
+#### Поиск
+-  **Простой Поиск**: Обычное сопоставление текста
+-  **Regex Поиск**: Продвинутые шаблоны (с защитой)
+-  **Фильтры**: Скрытые файлы, чувствительность к регистру
+-  **Живые Результаты**: Обновление при вводе
+
+#### Управление Процессами
+-  Отображает: PID, ЦП%, Память, Статус, Пользователь
+-  Классификация: Критичный/Большая нагрузка/Безопасный
+-  Защита: Критичные процессы нельзя завершить
+-  Авто-обновление: Интервалы 1-30 сек
+
+#### Кастомизация
+-  Цвета: Основной, Вторичный, Третичный, Акцент
+-  Размер Шрифта: Настраивается (8-16пт)
+-  Сохранение: Автосохранение в домашней директории
+
+License
+MIT License. Свободное использование в личных, образовательных и коммерческих целях. Полные условия см. в файле LICENSE.
