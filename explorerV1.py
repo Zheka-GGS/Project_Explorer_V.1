@@ -627,21 +627,315 @@ class DragDropManager:
         self.drop_target = None
 
 # ============================================================================
+# SPLASH SCREEN WITH PROGRESS BAR
+# ============================================================================
+class SplashScreen:
+    """Non-blocking splash screen з progress bar"""
+    
+    def __init__(self, parent_root=None):
+        self.splash = tk.Toplevel(parent_root) if parent_root else tk.Tk()
+        self.splash.title("PROJECT EXPLORER PRO")
+        self.splash.geometry("500x300")
+        self.splash.resizable(False, False)
+        
+        try:
+            self.splash.attributes('-type', 'splash')
+        except:
+            pass
+        
+        self.splash.update_idletasks()
+        x = (self.splash.winfo_screenwidth() // 2) - 250
+        y = (self.splash.winfo_screenheight() // 2) - 150
+        self.splash.geometry(f"+{x}+{y}")
+        
+        bg_color = "#0A0A0F"
+        fg_color = "#67E8F9"
+        self.splash.configure(bg=bg_color)
+        
+        frame = tk.Frame(self.splash, bg=bg_color)
+        frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        title = tk.Label(frame, text="🚀 PROJECT EXPLORER PRO", 
+                        font=("Segoe UI", 20, "bold"), 
+                        bg=bg_color, fg=fg_color)
+        title.pack(pady=20)
+        
+        version = tk.Label(frame, text="v1.0 — Initializing...", 
+                          font=("Segoe UI", 10), 
+                          bg=bg_color, fg="#A5F3FC")
+        version.pack(pady=5)
+        
+        self.status_label = tk.Label(frame, text="Loading core modules...", 
+                                    font=("Segoe UI", 9), 
+                                    bg=bg_color, fg="#60A5FA")
+        self.status_label.pack(pady=10)
+        
+        progress_frame = tk.Frame(frame, bg=bg_color, height=20)
+        progress_frame.pack(pady=15, fill=tk.X)
+        
+        self.progress_canvas = tk.Canvas(progress_frame, height=20, 
+                                        bg="#16161F", highlightthickness=0)
+        self.progress_canvas.pack(fill=tk.X)
+        
+        self.progress_canvas.create_rectangle(0, 0, 500, 20, fill="#16161F", outline="#67E8F9", width=2)
+        self.progress_fill = self.progress_canvas.create_rectangle(0, 0, 0, 20, fill="#22D3EE", outline="")
+        
+        self.progress_text = self.progress_canvas.create_text(
+            250, 10, text="0%", font=("Segoe UI", 9, "bold"), fill="#FFFFFF"
+        )
+        
+        self.tips_label = tk.Label(frame, text="Initializing components...", 
+                                   font=("Segoe UI", 8, "italic"), 
+                                   bg=bg_color, fg="#A0826D")
+        self.tips_label.pack(pady=5)
+        
+        self.progress = 0
+    
+    def update_progress(self, percent: int, status: str = ""):
+        """Update progress (0-100)"""
+        if percent > 100: percent = 100
+        if percent < 0: percent = 0
+        
+        self.progress = percent
+        fill_width = int((percent / 100) * 460)
+        self.progress_canvas.coords(self.progress_fill, 0, 0, fill_width, 20)
+        self.progress_canvas.itemconfig(self.progress_text, text=f"{percent}%")
+        
+        if status:
+            self.status_label.config(text=status)
+        
+        self.splash.update()
+    
+    def set_tip(self, text: str):
+        """Update tip message"""
+        self.tips_label.config(text=text)
+        self.splash.update()
+    
+    def close(self):
+        """Close splash screen"""
+        try:
+            self.splash.destroy()
+        except:
+            pass
+
+
+# ============================================================================
+# DPI & SCALING MANAGER
+# ============================================================================
+class ScalingManager:
+    """Manage DPI, scaling, responsive layout"""
+    
+    def __init__(self, root: tk.Tk):
+        self.root = root
+        self.dpi_scale = self._get_dpi_scale()
+        self.base_font_size = 10
+    
+    def _get_dpi_scale(self) -> float:
+        """Get DPI scale factor"""
+        try:
+            if platform.system() == "Windows":
+                try:
+                    user32 = ctypes.windll.user32
+                    dpi = user32.GetDpiForSystem()
+                    return dpi / 96.0
+                except:
+                    pass
+            
+            self.root.update_idletasks()
+            if hasattr(self.root, 'tk'):
+                try:
+                    screen_width_mm = self.root.winfo_screenmmwidth()
+                    screen_width_px = self.root.winfo_screenwidth()
+                    if screen_width_mm > 0:
+                        dpi = (screen_width_px * 25.4) / screen_width_mm
+                        return dpi / 96.0
+                except:
+                    pass
+        except:
+            pass
+        
+        return 1.0
+    
+    def scale_size(self, size: int) -> int:
+        """Scale size (padding, width, height)"""
+        return max(1, int(size * self.dpi_scale))
+    
+    def scale_font_size(self, size: int) -> int:
+        """Scale font size"""
+        return max(8, int(size * self.dpi_scale))
+    
+    def get_font(self, name: str = "Segoe UI", size: int = 10, weight: str = "normal") -> tuple:
+        """Get scaled font"""
+        scaled_size = self.scale_font_size(size)
+        return (name, scaled_size, weight)
+    
+    def get_padding(self, top: int = 5, right: int = 5, bottom: int = 5, left: int = 5) -> tuple:
+        """Get scaled paddings"""
+        return (
+            self.scale_size(left),
+            self.scale_size(top),
+            self.scale_size(right),
+            self.scale_size(bottom)
+        )
+
+
+# ============================================================================
+# DYNAMIC THEME MANAGER
+# ============================================================================
+class ThemeManager:
+    """Manage themes with dynamic updates to all windows"""
+    
+    def __init__(self, config: ConfigManager, scaling: ScalingManager):
+        self.config = config
+        self.scaling = scaling
+        self.current_theme_name = config.get("theme", "Modern Dark")
+        self.current_theme = THEMES.get(self.current_theme_name, THEMES["Modern Dark"])
+        self.font_size = config.get("font_size", 10)
+        self.theme_update_callbacks = []
+    
+    def register_update_callback(self, callback):
+        """Register callback for theme updates"""
+        self.theme_update_callbacks.append(callback)
+    
+    def set_theme(self, theme_name: str, font_size: int = None):
+        """Change theme and font"""
+        if theme_name not in THEMES:
+            return False
+        
+        self.current_theme_name = theme_name
+        self.current_theme = THEMES[theme_name]
+        self.config.set("theme", theme_name)
+        
+        if font_size is not None:
+            self.font_size = font_size
+            self.config.set("font_size", font_size)
+        
+        self._notify_all_windows()
+        return True
+    
+    def _notify_all_windows(self):
+        """Notify all registered windows about theme update"""
+        for callback in self.theme_update_callbacks:
+            try:
+                callback(self.current_theme, self.font_size)
+            except Exception as e:
+                print(f"[ERROR] Theme callback: {e}")
+    
+    def apply_style_to_widget(self, widget: tk.Widget, style_type: str = "normal"):
+        """Apply styles to specific widget"""
+        if style_type == "normal":
+            widget.configure(
+                bg=self.current_theme["bg_primary"],
+                fg=self.current_theme["fg_primary"]
+            )
+        elif style_type == "secondary":
+            widget.configure(
+                bg=self.current_theme["bg_secondary"],
+                fg=self.current_theme["fg_primary"]
+            )
+    
+    def get_ttk_style(self) -> ttk.Style:
+        """Generate ttk.Style based on current theme"""
+        style = ttk.Style()
+        style.theme_use('clam')
+        
+        font_name, font_size = "Segoe UI", self.scaling.scale_font_size(self.font_size)
+        
+        style.configure('TNotebook', background=self.current_theme["bg_primary"], borderwidth=0)
+        style.configure('TNotebook.Tab', padding=self.scaling.get_padding(10, 20, 10, 20),
+                       background=self.current_theme["bg_secondary"], foreground=self.current_theme["fg_primary"],
+                       font=(font_name, font_size))
+        style.map('TNotebook.Tab', background=[('selected', self.current_theme["bg_tertiary"])])
+        style.configure('TFrame', background=self.current_theme["bg_primary"])
+        style.configure('Secondary.TFrame', background=self.current_theme["bg_secondary"])
+        style.configure('TLabel', background=self.current_theme["bg_primary"], foreground=self.current_theme["fg_primary"],
+                       font=(font_name, font_size))
+        style.configure('Header.TLabel', background=self.current_theme["bg_primary"], 
+                       foreground=self.current_theme["accent"], font=(font_name, font_size + 1, 'bold'))
+        style.configure('TButton', background=self.current_theme["bg_tertiary"], 
+                       foreground=self.current_theme["fg_primary"], font=(font_name, font_size))
+        style.map('TButton', background=[('active', self.current_theme["accent"])])
+        style.configure('Treeview', background=self.current_theme["bg_secondary"], 
+                       foreground=self.current_theme["fg_primary"], fieldbackground=self.current_theme["bg_secondary"],
+                       font=(font_name, font_size))
+        style.map('Treeview', background=[('selected', self.current_theme["accent"])],
+                 foreground=[('selected', '#FFFFFF')])
+        style.configure('Treeview.Heading', background=self.current_theme["bg_tertiary"], 
+                       foreground=self.current_theme["accent"], font=(font_name, font_size, 'bold'))
+        
+        return style
+
+
+# ============================================================================
+# LAZY-LOADING CLASSIFIER
+# ============================================================================
+class FileClassifierAsync(FileClassifier):
+    """FileClassifier with async initialization"""
+    
+    def __init__(self, config: ConfigManager):
+        self.config = config
+        self.is_windows = platform.system() == "Windows"
+        self.running_process_paths = set()
+        self.cache = LRU_Cache(maxsize=8000)
+        self.current_theme = THEMES.get(self.config.get("theme", "Modern Dark"), THEMES["Modern Dark"])
+        self._init_complete = threading.Event()
+        self._lock = threading.Lock()
+    
+    def initialize_async(self):
+        """Start heavy initialization in thread"""
+        thread = threading.Thread(target=self._init_worker, daemon=True)
+        thread.start()
+        return thread
+    
+    def _init_worker(self):
+        """Background worker for initialization"""
+        try:
+            self.running_process_paths = self._get_running_process_paths()
+        except Exception as e:
+            print(f"[WARN] Process paths init failed: {e}")
+        finally:
+            self._init_complete.set()
+    
+    def is_ready(self) -> bool:
+        """Check if classifier is ready"""
+        return self._init_complete.is_set()
+
+
+# ============================================================================
 # MAIN APPLICATION
 # ============================================================================
 class ProjectExplorerPro:
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("PROJECT EXPLORER PRO - v1.0")
+        
+        # PHASE 0: SPLASH SCREEN
+        self.splash = SplashScreen()
+        self.splash.update_progress(5, "Loading configuration...")
+        
+        # PHASE 1: FAST INITIALIZATION
         self.config = ConfigManager()
+        self.splash.update_progress(10, "Initializing scaling...")
+        
+        self.scaling = ScalingManager(self.root)
+        self.splash.update_progress(15, "Setting up theme manager...")
+        
+        self.theme_manager = ThemeManager(self.config, self.scaling)
+        self.theme_manager.register_update_callback(self._on_theme_changed)
+        
+        self.splash.update_progress(20, "Initializing classifier...")
+        
+        self.classifier = FileClassifierAsync(self.config)
         
         # DPI Awareness (Windows)
         try:
             ctypes.windll.shcore.SetProcessDpiAwareness(1)
-        except Exception: pass
-
-        # State
-        self.classifier = FileClassifier(self.config)
+        except Exception:
+            pass
+        
+        self.splash.update_progress(25, "Initializing state...")
+        
+        # State initialization (quick)
         self.scanner_queue = queue.Queue()
         self.task_queue = queue.Queue()
         self.dup_queue = queue.Queue()
@@ -650,6 +944,7 @@ class ProjectExplorerPro:
         self.clipboard = FileClipboard()
         self.scanner_thread = None
         self.task_monitor_thread = None
+        self._settings_window = None
         
         recent_paths = self.config.get("recent_paths", [])
         self.current_path = recent_paths[0] if recent_paths else (str(Path.home()) if platform.system() != "Windows" else "C:\\")
@@ -659,64 +954,147 @@ class ProjectExplorerPro:
         self.auto_refresh = tk.BooleanVar(value=True)
         self.refresh_interval_var = tk.IntVar(value=self.config.get("task_refresh_interval", 2))
         self.load_count = 0
-
-        self._setup_theme()
+        
+        # PHASE 2: BUILDING UI
+        self.splash.update_progress(40, "Building UI...")
         self._build_ui()
-        self._show_disclaimer()
+        
+        self.splash.update_progress(70, "Starting services...")
+        
+        # PHASE 3: ASYNC OPERATIONS IN BACKGROUND
+        self.classifier_init_thread = self.classifier.initialize_async()
         self._start_task_monitor()
+        self._setup_disclaimer_async()
         self._process_queues()
+        
+        self.splash.update_progress(90, "Finalizing...")
         
         self.root.geometry(self.config.get("window_geometry", "1450x850"))
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        
+        self.splash.update_progress(100, "Ready!")
+        self.root.after(500, self._finalize_startup)
 
-    def _setup_theme(self):
-        c = self.config
-        theme_name = c.get("theme", "Modern Dark")
-        self.current_theme = THEMES.get(theme_name, THEMES["Modern Dark"])
+    def _finalize_startup(self):
+        """Complete startup and hide splash screen"""
+        try:
+            self.splash.close()
+        except:
+            pass
         
-        self.bg_primary = self.current_theme["bg_primary"]
-        self.bg_secondary = self.current_theme["bg_secondary"]
-        self.bg_tertiary = self.current_theme["bg_tertiary"]
-        self.fg_primary = self.current_theme["fg_primary"]
-        self.fg_secondary = self.current_theme["fg_secondary"]
-        self.accent = self.current_theme["accent"]
+        self.root.deiconify()
+        self.status_label.config(text="Ready. Classifier initializing in background...")
+        self._check_classifier_ready()
+
+    def _check_classifier_ready(self):
+        """Periodically check when classifier is ready"""
+        if not self.classifier.is_ready():
+            self.root.after(500, self._check_classifier_ready)
+        else:
+            self.status_label.config(text="✅ Ready")
+
+    def _setup_disclaimer_async(self):
+        """Show disclaimer in background (non-blocking)"""
+        def show_disclaimer():
+            msg = "⚠️ SAFETY DISCLAIMER\nThis tool provides deep system access.\nCRITICAL files/processes are protected.\nUse at your own risk. Backup important data.\nProceed?"
+            if not messagebox.askyesno("Safety Warning", msg):
+                self.root.quit()
         
-        self.font_size = c.get("font_size", 10)
-        self.default_font = ("Segoe UI", self.font_size)
+        threading.Thread(target=show_disclaimer, daemon=True).start()
+
+    def _on_theme_changed(self, theme: dict, font_size: int):
+        """Callback when theme changes - update ALL UI"""
+        self.theme_manager.get_ttk_style()
+        self.root.configure(bg=theme["bg_primary"])
         
-        self.root.configure(bg=self.bg_primary)
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('TNotebook', background=self.bg_primary, borderwidth=0)
-        style.configure('TNotebook.Tab', padding=[20, 10], background=self.bg_secondary, foreground=self.fg_primary, font=self.default_font)
-        style.map('TNotebook.Tab', background=[('selected', self.bg_tertiary)])
-        style.configure('TFrame', background=self.bg_primary)
-        style.configure('Secondary.TFrame', background=self.bg_secondary)
-        style.configure('TLabel', background=self.bg_primary, foreground=self.fg_primary, font=self.default_font)
-        style.configure('Header.TLabel', background=self.bg_primary, foreground=self.accent, font=('Segoe UI', self.font_size + 1, 'bold'))
-        style.configure('TButton', background=self.bg_tertiary, foreground=self.fg_primary, font=self.default_font)
-        style.map('TButton', background=[('active', self.accent)])
-        style.configure('Treeview', background=self.bg_secondary, foreground=self.fg_primary, fieldbackground=self.bg_secondary, font=self.default_font)
-        style.map('Treeview', background=[('selected', self.accent)], foreground=[('selected', '#FFFFFF')])
-        style.configure('Treeview.Heading', background=self.bg_tertiary, foreground=self.accent, font=('Segoe UI', self.font_size, 'bold'))
+        # Update settings window if open
+        if hasattr(self, '_settings_window') and self._settings_window and self._settings_window.winfo_exists():
+            self._apply_theme_to_settings_window(self._settings_window, theme, font_size)
+        
+        # Update all widgets recursively
+        for widget in self.root.winfo_children():
+            self._apply_theme_recursive(widget, theme)
+        
+        self.status_label.config(text="Theme updated ✅")
+
+    def _apply_theme_recursive(self, widget: tk.Widget, theme: dict):
+        """Recursively apply theme to all child widgets"""
+        if isinstance(widget, tk.Label):
+            self.theme_manager.apply_style_to_widget(widget)
+        elif isinstance(widget, tk.Frame):
+            if isinstance(widget, ttk.Frame):
+                widget.configure(style='Secondary.TFrame' if widget != self.root else 'TFrame')
+            else:
+                self.theme_manager.apply_style_to_widget(widget, "secondary")
+        
+        for child in widget.winfo_children():
+            self._apply_theme_recursive(child, theme)
+
+    def _apply_theme_to_settings_window(self, window: tk.Toplevel, theme: dict, font_size: int):
+        """Apply theme to settings window"""
+        window.configure(bg=theme["bg_primary"])
+        for widget in window.winfo_children():
+            self._apply_theme_recursive(widget, theme)
 
     def _build_ui(self):
+        # Get theme colors for compatibility with existing code
+        theme = self.theme_manager.current_theme
+        self.bg_primary = theme["bg_primary"]
+        self.bg_secondary = theme["bg_secondary"]
+        self.bg_tertiary = theme["bg_tertiary"]
+        self.fg_primary = theme["fg_primary"]
+        self.fg_secondary = theme["fg_secondary"]
+        self.accent = theme["accent"]
+        self.font_size = self.theme_manager.font_size
+        self.default_font = self.scaling.get_font(size=self.font_size)
+        
+        self.root.configure(bg=self.bg_primary)
+        
+        # Set up ttk styles
+        self.theme_manager.get_ttk_style()
+        
+        # Menubar
         menubar = tk.Menu(self.root, bg=self.bg_tertiary, fg=self.fg_primary)
         file_menu = tk.Menu(menubar, tearoff=0, bg=self.bg_tertiary, fg=self.fg_primary)
-        file_menu.add_command(label="Open Settings", command=self._open_settings)
+        file_menu.add_command(label="⚙️ Settings", command=self._open_settings, accelerator="Ctrl+,")
         file_menu.add_separator()
         file_menu.add_command(label="Copy", command=self._clipboard_copy, accelerator="Ctrl+C")
         file_menu.add_command(label="Cut", command=self._clipboard_cut, accelerator="Ctrl+X")
         file_menu.add_command(label="Paste", command=self._clipboard_paste, accelerator="Ctrl+V")
+        file_menu.add_separator()
+        file_menu.add_command(label="Exit", command=self._on_close, accelerator="Alt+F4")
         menubar.add_cascade(label="File", menu=file_menu)
         self.root.config(menu=menubar)
 
+        # Keyboard shortcuts
+        self.root.bind('<Control-comma>', lambda e: self._open_settings())
         self.root.bind('<Control-c>', lambda e: self._clipboard_copy())
         self.root.bind('<Control-x>', lambda e: self._clipboard_cut())
         self.root.bind('<Control-v>', lambda e: self._clipboard_paste())
         self.root.bind('<Delete>', lambda e: self._delete_selected_context())
         self.root.bind('<F2>', lambda e: self._rename_selected())
         self.root.bind('<F5>', lambda e: self._start_scan())
+        
+        # Top control bar with Settings button
+        top_bar = ttk.Frame(self.root, style='Secondary.TFrame')
+        top_bar.pack(fill=tk.X, padx=5, pady=5, side=tk.TOP)
+        
+        info_label = ttk.Label(top_bar, text="🚀 Project Explorer Pro v1.0", style='Header.TLabel')
+        info_label.pack(side=tk.LEFT, padx=10)
+        
+        right_controls = ttk.Frame(top_bar, style='Secondary.TFrame')
+        right_controls.pack(side=tk.RIGHT, padx=10)
+        
+        settings_btn = tk.Button(right_controls, text="⚙️ Settings", command=self._open_settings,
+                                bg=self.accent, fg="#FFFFFF", font=self.scaling.get_font(size=9, weight="bold"),
+                                padx=10, pady=5, relief=tk.FLAT, cursor="hand2")
+        settings_btn.pack(side=tk.RIGHT, padx=5)
+        self._create_tooltip(settings_btn, "Settings & Appearance (Ctrl+,)")
+        
+        help_btn = tk.Button(right_controls, text="❓ Help", command=self._show_help,
+                            bg=self.bg_tertiary, fg=self.fg_primary, font=self.scaling.get_font(size=9),
+                            padx=8, pady=5, relief=tk.FLAT, cursor="hand2")
+        help_btn.pack(side=tk.RIGHT, padx=2)
 
         notebook = ttk.Notebook(self.root)
         notebook.pack(fill=tk.BOTH, expand=True)
@@ -1044,70 +1422,152 @@ class ProjectExplorerPro:
 
     # ==================== UI HELPERS & SETTINGS ====================
     def _open_settings(self):
-        top = tk.Toplevel(self.root)
-        top.title("⚙️ Settings & Appearance")
-        top.geometry("500x500")
-        top.resizable(False, False)
+        """Updated Settings window with dynamic theme updates"""
+        self._settings_window = tk.Toplevel(self.root)
+        self._settings_window.title("⚙️ Settings & Appearance")
+        self._settings_window.geometry("500x550")
+        self._settings_window.resizable(False, False)
         
-        frame = ttk.Frame(top, padding=20)
+        # Apply current theme
+        self._settings_window.configure(bg=self.theme_manager.current_theme["bg_primary"])
+        
+        frame = ttk.Frame(self._settings_window, padding=self.scaling.get_padding(20, 20, 20, 20))
         frame.pack(fill=tk.BOTH, expand=True)
         
         # Theme Selection
-        ttk.Label(frame, text="Theme:", font=('Segoe UI', 11, 'bold')).pack(anchor=tk.W, pady=(10, 5))
-        theme_var = tk.StringVar(value=self.config.get("theme", "Modern Dark"))
-        theme_combo = ttk.Combobox(frame, textvariable=theme_var, values=list(THEMES.keys()), 
-                                    width=40, state="readonly", font=self.default_font)
+        theme_label = ttk.Label(frame, text="Theme:", 
+                               font=self.scaling.get_font(weight="bold"))
+        theme_label.pack(anchor=tk.W, pady=(10, 5))
+        
+        theme_var = tk.StringVar(value=self.theme_manager.current_theme_name)
+        theme_combo = ttk.Combobox(frame, textvariable=theme_var, 
+                                  values=list(THEMES.keys()), 
+                                  width=40, state="readonly",
+                                  font=self.scaling.get_font())
         theme_combo.pack(anchor=tk.W, pady=5, fill=tk.X)
         
-        # Theme Preview
+        # Theme Preview (Live update)
         preview_frame = ttk.LabelFrame(frame, text="Theme Preview", padding=10)
         preview_frame.pack(fill=tk.X, pady=10)
+        preview_frame.configure(style='Secondary.TFrame')
+        
+        preview_label = ttk.Label(preview_frame, text="Sample Text", 
+                                 font=self.scaling.get_font(size=12, weight="bold"))
+        preview_label.pack(pady=15)
         
         def update_preview(*args):
-            theme = THEMES.get(theme_var.get(), THEMES["Modern Dark"])
-            preview_label.config(
-                text="Sample Text",
-                foreground=theme["fg_primary"],
-                background=theme["bg_secondary"]
-            )
+            """Live preview when changing theme"""
+            selected_theme = THEMES.get(theme_var.get(), THEMES["Modern Dark"])
+            preview_label.configure(foreground=selected_theme["fg_primary"])
             preview_frame.configure(style='Secondary.TFrame')
         
-        preview_label = ttk.Label(preview_frame, text="Sample Text", font=('Segoe UI', 12, 'bold'),
-                                   background=self.bg_secondary, foreground=self.fg_primary)
-        preview_label.pack(pady=15)
         theme_var.trace_add('write', update_preview)
         
         # Font Size
-        ttk.Label(frame, text="Font Size:", font=self.default_font).pack(anchor=tk.W, pady=(15, 5))
-        font_spin = ttk.Spinbox(frame, from_=8, to=16, width=5, font=self.default_font)
-        font_spin.set(self.font_size)
+        font_label = ttk.Label(frame, text="Font Size:", 
+                              font=self.scaling.get_font())
+        font_label.pack(anchor=tk.W, pady=(15, 5))
+        
+        font_spin = ttk.Spinbox(frame, from_=8, to=16, width=5, 
+                               font=self.scaling.get_font())
+        font_spin.set(self.theme_manager.font_size)
         font_spin.pack(anchor=tk.W, pady=5)
+        
+        # DPI Scale info
+        dpi_label = ttk.Label(frame, text=f"DPI Scale: {self.scaling.dpi_scale:.2f}x", 
+                             font=self.scaling.get_font(size=9))
+        dpi_label.pack(anchor=tk.W, pady=10)
         
         # Apply Button
         def apply_settings():
+            """Apply settings and update ALL UI"""
             theme_name = theme_var.get()
-            if theme_name in THEMES:
-                self.config.set("theme", theme_name)
-                self.classifier.current_theme = THEMES[theme_name]
-                
             try:
                 font_size = int(font_spin.get())
-                if 8 <= font_size <= 16:
-                    self.config.set("font_size", font_size)
-                    self.font_size = font_size
+                if not (8 <= font_size <= 16):
+                    font_size = self.theme_manager.font_size
             except ValueError:
-                pass
+                font_size = self.theme_manager.font_size
             
-            self._setup_theme()
+            # This calls _on_theme_changed for all windows
+            self.theme_manager.set_theme(theme_name, font_size)
+            
+            # Clear cache
             self.classifier.cache.clear()
-            self._start_scan()
-            top.destroy()
+            
+            # Close settings window
+            self._settings_window.destroy()
+            self._settings_window = None
         
-        ttk.Button(frame, text="💾 Apply & Close", command=apply_settings).pack(pady=20)
+        apply_btn = ttk.Button(frame, text="💾 Apply & Close", command=apply_settings)
+        apply_btn.pack(pady=20, fill=tk.X)
+        
+        # Center window on screen
+        self._settings_window.update_idletasks()
+        x = (self._settings_window.winfo_screenwidth() // 2) - 250
+        y = (self._settings_window.winfo_screenheight() // 2) - 275
+        self._settings_window.geometry(f"+{x}+{y}")
 
-    def _show_disclaimer(self):
-        msg = "⚠️ SAFETY DISCLAIMER\nThis tool provides deep system access.\nCRITICAL files/processes are protected.\nUse at your own risk. Backup important data.\nProceed?"
-        if not messagebox.askyesno("Safety Warning", msg): sys.exit(0)
+    def _create_tooltip(self, widget, text):
+        """Add tooltip to widget"""
+        def on_enter(event):
+            tooltip = tk.Toplevel()
+            tooltip.wm_overrideredirect(True)
+            tooltip.wm_geometry(f"+{event.x_root+10}+{event.y_root+10}")
+            label = tk.Label(tooltip, text=text, 
+                            bg=self.theme_manager.current_theme["bg_tertiary"],
+                            fg=self.theme_manager.current_theme["fg_secondary"],
+                            padx=5, pady=2, font=self.scaling.get_font(size=8),
+                            relief=tk.SOLID, borderwidth=1)
+            label.pack()
+            widget._tooltip = tooltip
+        
+        def on_leave(event):
+            if hasattr(widget, '_tooltip'):
+                widget._tooltip.destroy()
+                delattr(widget, '_tooltip')
+        
+        widget.bind("<Enter>", on_enter)
+        widget.bind("<Leave>", on_leave)
+
+    def _show_help(self):
+        """Show Help dialog"""
+        help_text = """PROJECT EXPLORER PRO v1.0 - Help
+
+⚙️ Settings:
+   - Change theme (Modern Dark, Deep Indigo, Cyber Neon, etc.)
+   - Adjust font size for better readability
+   - Customize scan mode and other preferences
+
+🔍 Scanner:
+   - Browse and analyze directories
+   - Drag & drop files for quick operations
+   - Right-click for context menu
+
+📊 Task Manager:
+   - Monitor running processes
+   - View CPU/Memory usage
+   - Safely terminate processes (non-critical)
+
+⌨️ Keyboard Shortcuts:
+   - Ctrl+, : Open Settings
+   - Ctrl+C : Copy
+   - Ctrl+X : Cut
+   - Ctrl+V : Paste
+   - Delete : Delete selected
+   - F2 : Rename
+   - F5 : Refresh scan
+
+⚠️ Safety:
+   - CRITICAL files and processes are protected
+   - Always backup important data before operations
+
+📖 For more info:
+   - Check File menu for more options
+   - Hover over elements for tooltips
+        """
+        
+        messagebox.showinfo("Help & Documentation", help_text)
 
     def _save_config(self):
         self.config.set("scan_mode", self.scan_mode.get())
@@ -1231,5 +1691,6 @@ class ProjectExplorerPro:
 
 if __name__ == "__main__":
     root = tk.Tk()
+    root.withdraw()  # Hide until initialization complete
     app = ProjectExplorerPro(root)
     root.mainloop()

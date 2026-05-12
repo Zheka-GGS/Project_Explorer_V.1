@@ -6,6 +6,8 @@
 
 ##  ENGLISH VERSION
 
+READ CHANGELOG.md
+
 ###  Overview
 **Project Explorer Pro V1** is a high-performance desktop application designed for advanced directory scanning, file management, and real-time system process monitoring. Built with Python and Tkinter, it delivers a professional, dark-themed interface with **enterprise-grade security** mechanisms to prevent accidental modification or deletion of critical system files.
 
@@ -133,6 +135,8 @@ MIT License. Free for personal, educational, and commercial use. Refer to the in
 ---
 
 ##  РУССКАЯ ВЕРСИЯ
+
+ЧИТАЙТЕ CHANGELOG.md
 
 ###  Обзор
 **Project Explorer Pro V1** — это высокопроизводительное десктопное приложение для расширенного сканирования директорий, управления файлами и мониторинга системных процессов. Разработано на Python с Tkinter. Предоставляет профессиональный интерфейс с **корпоративным уровнем безопасности** для защиты критических файлов системы.
