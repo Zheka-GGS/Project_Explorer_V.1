@@ -1,1 +1,15 @@
-psutil>=5.8.0
+# Project Explorer Pro - Dependencies
+
+# Core
+psutil>=5.9.0              # Process and system monitoring
+customtkinter>=5.2.0       # Modern UI framework
+
+# Building
+pyinstaller>=5.0.0         # Create executable
+pyinstaller-hooks-contrib>=2022.0  # Additional hooks
+
+# Development (optional)
+pytest>=7.0.0              # Testing framework
+mypy>=0.950                # Type checking
+black>=22.0.0              # Code formatting
+pylint>=2.13.0             # Linting

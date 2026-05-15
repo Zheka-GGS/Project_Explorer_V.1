@@ -121,3 +121,30 @@ Each theme contains:
 - Added **Keyboard shortcut Ctrl+,**
 - **Result**: Settings are visible and easily accessible
 - **Improvement**: Settings are clearly visible
+
+
+## v1.4 — Important update
+
+### What was done
+
+### Refactoring the project structure
+
+**Resolved**
+
+The `explorerV1.py` file has been split into logical modules. Now the code is not one big ``dump'' but has a clear structure. This greatly simplifies debugging, support, and further development.
+
+**Done:**
+- Added project tree file (`project_explorer_pro/`)
+- Created modular architecture (`core/`, `ui/`, `config/`, etc.)
+- Added `build.bat` — a convenient script for compiling `.exe` via PyInstaller
+- Significantly improved code clarity and organization
+
+---
+
+### Performance improvements
+
+**Resolved**
+
+- Optimized work with scanning large directories
+- Improved interface responsiveness during heavy operations
+- Optimized Treeview caching and update algorithms
